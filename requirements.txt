@@ -1,9 +1,13 @@
+# --- Web API ---
+fastapi>=0.115.0          # HTTP API framework
+uvicorn[standard]>=0.30.0 # ASGI server
+
 # --- Core AWS SDK ---
 boto3>=1.34.0             # The standard AWS SDK for Python (talks to Bedrock, S3, DynamoDB)
 
 # --- LangChain & Orchestration ---
 langchain>=0.3.0          # The main framework for chaining prompts and logic
-langchain-core==1.2.4     # The core framework for chaining prompts and logic
+langchain-core>=0.3.0,<0.4  # Must stay aligned with langchain 0.3.x (was pinned to nonexistent 1.2.4)
 langchain-aws>=0.2.0      # Specialized AWS integrations (optimized for Bedrock)
 langchain-community>=0.3.0 # needed for specific tools/utilities not in core
 llama-index>=0.10.0       # LlamaIndex - data framework for LLM applications
