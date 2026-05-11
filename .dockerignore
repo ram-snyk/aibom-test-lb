@@ -37,6 +37,9 @@ ENV/
 *.swp
 *.swo
 
+# Deliberate insecure patterns for CI demos only (never ship in images)
+security_review_samples/
+
 # Testing
 .pytest_cache/
 .coverage
