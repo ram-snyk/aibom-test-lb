@@ -27,5 +27,8 @@ profile = "black"
 skip_glob = ["skills/**"]
 
 # Third-party Cursor skills catalog — not formatted with project Black rules.
+# target-version must match CI (GitHub Actions uses Python 3.11); otherwise a
+# newer local Black may emit 3.12+ syntax and `black --check` fails on the runner.
 [tool.black]
 extend-exclude = "skills/"
+target-version = ["py311"]

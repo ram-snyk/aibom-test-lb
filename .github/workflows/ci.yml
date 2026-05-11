@@ -39,7 +39,7 @@ jobs:
 
       - name: Install linting tools
         run: |
-          pip install ruff black isort mypy
+          pip install ruff "black>=24.3" isort mypy
 
       - name: Run Ruff linter
         run: ruff check . --output-format=github

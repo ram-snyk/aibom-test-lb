@@ -235,8 +235,7 @@ class ComputeStack(cdk.Stack):
             function_name=f"{project_name}-{environment}-bedrock-invoke",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.handler",
-            code=_lambda.Code.from_inline(
-                """
+            code=_lambda.Code.from_inline("""
 import json
 import boto3
 import os
@@ -287,8 +286,7 @@ def handler(event, context):
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': str(e)})
         }
-"""
-            ),
+"""),
             timeout=cdk.Duration.seconds(120),
             memory_size=512,
             environment={
@@ -330,8 +328,7 @@ def handler(event, context):
             function_name=f"{project_name}-{environment}-agent-invoke",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.handler",
-            code=_lambda.Code.from_inline(
-                """
+            code=_lambda.Code.from_inline("""
 import json
 import boto3
 import os
@@ -381,8 +378,7 @@ def handler(event, context):
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': str(e)})
         }
-"""
-            ),
+"""),
             timeout=cdk.Duration.seconds(120),
             memory_size=512,
             environment={

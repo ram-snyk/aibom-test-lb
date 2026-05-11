@@ -126,8 +126,7 @@ If you're unsure about something, say so rather than making up information.""",
             function_name=f"{project_name}-{environment}-agent-actions",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.handler",
-            code=_lambda.Code.from_inline(
-                """
+            code=_lambda.Code.from_inline("""
 import json
 import boto3
 
@@ -167,8 +166,7 @@ def handler(event, context):
             "responseBody": response_body
         }
     }
-"""
-            ),
+"""),
             timeout=cdk.Duration.seconds(30),
             memory_size=256,
             log_retention=logs.RetentionDays.ONE_WEEK,

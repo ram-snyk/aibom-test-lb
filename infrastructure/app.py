@@ -3,6 +3,7 @@
 AWS CDK Application Entry Point
 Deploys AI/ML application infrastructure with Bedrock and AgentCore support.
 """
+
 import os
 
 import aws_cdk as cdk
