@@ -67,8 +67,15 @@ jobs:
         run: |
           set -euo pipefail
           curl https://cursor.com/install -fsS | bash
-          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
-          "$HOME/.cursor/bin/agent" --version || true
+          # Install script may place `agent` under ~/.local/bin (docs) or ~/.cursor/bin
+          for d in "$HOME/.local/bin" "$HOME/.cursor/bin"; do
+            if [ -d "$d" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+            fi
+          done
+          export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
+          command -v agent
+          agent --version
 
       - name: Run Cursor agent — security review
         env:
@@ -80,6 +87,7 @@ jobs:
           ACTOR: ${{ github.event.pull_request.user.login || github.actor }}
         run: |
           set -euo pipefail
+          export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
           if [ -z "${CURSOR_API_KEY:-}" ]; then
             echo "::warning::CURSOR_API_KEY is not configured. Add it in repo Actions secrets to enable this job."
             exit 0
@@ -90,7 +98,8 @@ jobs:
             PR_LINE="Manual workflow_dispatch — branch ${HEAD_REF} vs origin/${BASE_REF}"
           fi
 
-          agent -p --output-format text \
+          # --trust: non-interactive CI (otherwise agent prompts for workspace trust and exits 1)
+          agent --trust -p --output-format text \
             "You are performing an automated security-focused code review for a GitHub change.
 
             Context:
