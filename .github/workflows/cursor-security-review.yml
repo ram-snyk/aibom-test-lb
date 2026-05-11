@@ -1,0 +1,94 @@
+# =============================================================================
+# Cursor CLI — security-focused PR review (GitHub Actions)
+#
+# This uses the official Cursor headless agent pattern:
+#   https://cursor.com/docs/cli/github-actions
+#
+# It complements (does not replace) Cursor Teams "Security Review" in the
+# dashboard, which is configured separately:
+#   https://cursor.com/docs/security-review
+#
+# Setup: Settings → Secrets and variables → Actions → add CURSOR_API_KEY
+#   https://cursor.com/docs/cli/reference/authentication.md#api-key-authentication
+#
+# Note: Secrets are not passed to workflows from fork PRs (GitHub default).
+# =============================================================================
+name: Cursor Security Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+concurrency:
+  group: cursor-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cursor-security-review:
+    name: Cursor agent (security review)
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Build PR diff for the agent
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          git diff "origin/${{ github.base_ref }}...HEAD" > pr-diff.patch || true
+          git diff "origin/${{ github.base_ref }}...HEAD" --stat > pr-diff-stat.txt || true
+          # Keep prompt size bounded (very large PRs still get stat + partial diff)
+          if [ "$(wc -c < pr-diff.patch)" -gt 400000 ]; then
+            echo "::notice::Truncating pr-diff.patch to 5000 lines for agent context."
+            head -n 5000 pr-diff.patch > pr-diff-truncated.patch
+            mv pr-diff-truncated.patch pr-diff.patch
+            printf "\n\n... [diff truncated for CI; review full PR on GitHub]\n" >> pr-diff.patch
+          fi
+          wc -l pr-diff.patch pr-diff-stat.txt
+
+      - name: Install Cursor CLI
+        run: |
+          set -euo pipefail
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+          "$HOME/.cursor/bin/agent" --version || true
+
+      - name: Run Cursor agent — security review
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CURSOR_API_KEY:-}" ]; then
+            echo "::warning::CURSOR_API_KEY is not configured. Add it in repo Actions secrets to enable this job."
+            exit 0
+          fi
+
+          agent -p --output-format text \
+            "You are performing an automated security-focused code review for a GitHub pull request.
+
+            Context:
+            - Repository: ${{ github.repository }}
+            - PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+            - Base branch: ${{ github.base_ref }}  Head branch: ${{ github.head_ref }}
+            - Author: ${{ github.event.pull_request.user.login }}
+
+            In the workspace you have pr-diff.patch (unified diff) and pr-diff-stat.txt. Read them.
+
+            Focus on: injection (SQL/OS/command), authn/authz mistakes, secret or credential leakage, unsafe deserialization, SSRF, path traversal, weak crypto, logging of sensitive data, CORS misconfiguration, and dependency-related risks visible in the diff.
+
+            Output only (do not modify any files):
+            1) Executive summary (2-5 sentences)
+            2) Findings: severity (Critical/High/Medium/Low/Info), file path and brief location if inferable, issue, concrete remediation
+            3) If nothing material: say so explicitly and note any residual assumptions.
+
+            This is analysis only — do not apply patches or write to the repo."
