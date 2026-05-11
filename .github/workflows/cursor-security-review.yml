@@ -19,9 +19,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      base_branch:
+        description: "Branch to diff against (compare selected branch to this base)"
+        required: false
+        default: "main"
 
 concurrency:
-  group: cursor-security-${{ github.event.pull_request.number }}
+  group: cursor-security-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -32,22 +38,23 @@ jobs:
   cursor-security-review:
     name: Cursor agent (security review)
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
 
     steps:
-      - name: Checkout PR head
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Build PR diff for the agent
+      - name: Build diff for the agent
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.base_branch }}
         run: |
           set -euo pipefail
-          git fetch origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
-          git diff "origin/${{ github.base_ref }}...HEAD" > pr-diff.patch || true
-          git diff "origin/${{ github.base_ref }}...HEAD" --stat > pr-diff-stat.txt || true
-          # Keep prompt size bounded (very large PRs still get stat + partial diff)
+          git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          git diff "origin/${BASE_REF}...HEAD" > pr-diff.patch || true
+          git diff "origin/${BASE_REF}...HEAD" --stat > pr-diff-stat.txt || true
           if [ "$(wc -c < pr-diff.patch)" -gt 400000 ]; then
             echo "::notice::Truncating pr-diff.patch to 5000 lines for agent context."
             head -n 5000 pr-diff.patch > pr-diff-truncated.patch
@@ -66,6 +73,11 @@ jobs:
       - name: Run Cursor agent — security review
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.base_branch }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+          ACTOR: ${{ github.event.pull_request.user.login || github.actor }}
         run: |
           set -euo pipefail
           if [ -z "${CURSOR_API_KEY:-}" ]; then
@@ -73,14 +85,19 @@ jobs:
             exit 0
           fi
 
+          PR_LINE="Pull request #${PR_NUMBER:-manual}: ${PR_TITLE}"
+          if [ -z "${PR_NUMBER}" ]; then
+            PR_LINE="Manual workflow_dispatch — branch ${HEAD_REF} vs origin/${BASE_REF}"
+          fi
+
           agent -p --output-format text \
-            "You are performing an automated security-focused code review for a GitHub pull request.
+            "You are performing an automated security-focused code review for a GitHub change.
 
             Context:
             - Repository: ${{ github.repository }}
-            - PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
-            - Base branch: ${{ github.base_ref }}  Head branch: ${{ github.head_ref }}
-            - Author: ${{ github.event.pull_request.user.login }}
+            - ${PR_LINE}
+            - Base branch: ${BASE_REF}  Head branch/ref: ${HEAD_REF}
+            - Author/triggered by: ${ACTOR}
 
             In the workspace you have pr-diff.patch (unified diff) and pr-diff-stat.txt. Read them.
 
