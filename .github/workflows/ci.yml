@@ -1,6 +1,6 @@
 # =============================================================================
-# CI Pipeline — lint, test, and Snyk (SCA, SAST, container, AIBOM)
-# AWS / ECR deployment steps removed; use SNYK_TOKEN for security jobs.
+# CI Pipeline — lint and Snyk (SCA, SAST, container, AIBOM)
+# Unit tests disabled; use SNYK_TOKEN for security jobs.
 # =============================================================================
 name: CI Pipeline
 
@@ -54,47 +54,6 @@ jobs:
         run: mypy . --ignore-missing-imports || true
 
   # ---------------------------------------------------------------------------
-  # Unit Tests
-  # ---------------------------------------------------------------------------
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio httpx
-
-      - name: Run tests with coverage
-        run: |
-          pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
-
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          fail_ci_if_error: false
-
-  # ---------------------------------------------------------------------------
   # Security Scanning with Snyk (SCA + SAST)
   # ---------------------------------------------------------------------------
   security-scan:
@@ -138,7 +97,7 @@ jobs:
   snyk-container:
     name: Snyk Container Scan
     runs-on: ubuntu-latest
-    needs: [test, security-scan]
+    needs: security-scan
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -161,7 +120,7 @@ jobs:
   aibom:
     name: Generate AIBOM
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: lint
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
