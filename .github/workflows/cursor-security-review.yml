@@ -4,18 +4,15 @@
 # This uses the official Cursor headless agent pattern:
 #   https://cursor.com/docs/cli/github-actions
 #
-# It complements (does not replace) Cursor Teams "Security Review" in the
-# dashboard, which is configured separately:
-#   https://cursor.com/docs/security-review
+# Tangible outputs: (1) uploaded pr-diff.patch / pr-diff-stat.txt artifact,
+# (2) job summary with diff mode, (3) agent log in the job output.
+#
+# If origin/base...HEAD is empty (e.g. main vs main), the workflow falls back to
+# the last commit patch so the agent still has real hunks to review.
+#
+# See .github/CURSOR_VS_SNYK.md for how this differs from Snyk.
 #
 # Setup: Settings → Secrets and variables → Actions → add CURSOR_API_KEY
-#   https://cursor.com/docs/cli/reference/authentication.md#api-key-authentication
-#
-# Manual run (workflow_dispatch): choose Branch = YOUR FEATURE BRANCH (must be
-# pushed to origin), Base input = main. Running on "main" vs base "main" yields
-# an empty diff — there is nothing to compare.
-#
-# Note: Secrets are not passed to workflows from fork PRs (GitHub default).
 # =============================================================================
 name: Cursor Security Review
 
@@ -45,7 +42,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
 
     steps:
-      # PR: exact head SHA (fork-safe). Manual: branch ref so Git knows the branch name for fetch/diff.
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -59,14 +55,13 @@ jobs:
           HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
-          echo "## Diff context" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Cursor Security Review — diff context" >> "$GITHUB_STEP_SUMMARY"
           echo "- **event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **HEAD (SHA):** $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **HEAD branch name:** ${HEAD_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **HEAD branch:** ${HEAD_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Base ref:** ${BASE_REF}" >> "$GITHUB_STEP_SUMMARY"
 
           git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          # Ensure the tip of the feature branch exists on origin (commits must be pushed)
           git fetch origin "${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}" || {
             echo "::warning::Could not fetch origin/${HEAD_BRANCH}. Push the branch to origin, then re-run."
           }
@@ -74,24 +69,51 @@ jobs:
           echo "### Commits on HEAD not in origin/${BASE_REF} (first 20)" >> "$GITHUB_STEP_SUMMARY"
           git log --oneline "origin/${BASE_REF}..HEAD" | head -20 >> "$GITHUB_STEP_SUMMARY" || true
 
+          MODE="pr_three_dot"
           git diff "origin/${BASE_REF}...HEAD" > pr-diff.patch || true
           git diff "origin/${BASE_REF}...HEAD" --stat > pr-diff-stat.txt || true
 
+          if [ ! -s pr-diff.patch ]; then
+            echo "::notice::Three-dot diff empty (HEAD matches merge-base with origin/${BASE_REF}, or same commit). Trying fallbacks so the agent still has hunks."
+            if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+              git diff HEAD~1..HEAD > pr-diff.patch
+              git diff HEAD~1..HEAD --stat > pr-diff-stat.txt
+              MODE="parent_to_head"
+            else
+              git show -p --no-color --pretty=medium HEAD > pr-diff.patch
+              git show --stat --no-patch HEAD > pr-diff-stat.txt || git show --stat HEAD > pr-diff-stat.txt
+              MODE="single_commit_show"
+            fi
+          fi
+
+          if [ ! -s pr-diff.patch ]; then
+            printf '%s\n' "--- /dev/null" "+++ b/.github/cursor-security-review-fallback.txt" "@@ -0,0 +1,3 @@" "+No git diff could be generated (empty repo or checkout issue)." "+Re-run from a branch with commits, or open a PR with real changes." "+See workflow logs for fetch/diff diagnostics." > pr-diff.patch
+            printf '%s\n' " .github/cursor-security-review-fallback.txt | 3 +" > pr-diff-stat.txt
+            MODE="placeholder"
+          fi
+
           BYTES=$(wc -c < pr-diff.patch | tr -d ' ')
           echo "bytes=${BYTES}" >> "$GITHUB_OUTPUT"
+          echo "diff_mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "- **diff_mode:** ${MODE}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **pr-diff.patch size (bytes):** ${BYTES}" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "${BYTES}" -eq 0 ] || [ ! -s pr-diff.patch ]; then
-            echo "::notice::Empty diff: origin/${BASE_REF} and HEAD name the same tree, or no commits on this branch are ahead of origin/${BASE_REF}. For a manual run, pick your **feature branch** in 'Use workflow from' (not main) and ensure it is **pushed** to GitHub."
-          fi
 
           if [ "${BYTES}" -gt 400000 ]; then
             echo "::notice::Truncating pr-diff.patch to 5000 lines for agent context."
             head -n 5000 pr-diff.patch > pr-diff-truncated.patch
             mv pr-diff-truncated.patch pr-diff.patch
-            printf "\n\n... [diff truncated for CI; review full PR on GitHub]\n" >> pr-diff.patch
+            printf "\n\n... [diff truncated for CI]\n" >> pr-diff.patch
           fi
           wc -l pr-diff.patch pr-diff-stat.txt
+
+      - name: Upload diff inputs (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cursor-security-review-input
+          path: |
+            pr-diff.patch
+            pr-diff-stat.txt
+          retention-days: 14
 
       - name: Install Cursor CLI
         run: |
@@ -114,18 +136,12 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.base_branch }}
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
           ACTOR: ${{ github.event.pull_request.user.login || github.actor }}
-          DIFF_BYTES: ${{ steps.diff.outputs.bytes }}
+          DIFF_MODE: ${{ steps.diff.outputs.diff_mode }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
           if [ -z "${CURSOR_API_KEY:-}" ]; then
             echo "::warning::CURSOR_API_KEY is not configured. Add it in repo Actions secrets to enable this job."
-            exit 0
-          fi
-
-          if [ -z "${DIFF_BYTES:-0}" ] || [ "${DIFF_BYTES}" -eq 0 ] || [ ! -s pr-diff.patch ]; then
-            echo "Skipping Cursor agent: empty diff (nothing ahead of origin/${BASE_REF} for this checkout)."
-            echo "Open a PR from your feature branch, or re-run workflow_dispatch with **Branch** = pushed feature branch and **base_branch** = ${BASE_REF}."
             exit 0
           fi
 
@@ -142,8 +158,11 @@ jobs:
             - ${PR_LINE}
             - Base branch: ${BASE_REF}  Head branch/ref: ${HEAD_REF}
             - Author/triggered by: ${ACTOR}
+            - **diff_mode:** ${DIFF_MODE}
+              (pr_three_dot = changes vs merge-base of base; parent_to_head / single_commit_show = fallback when three-dot was empty; placeholder = last resort)
 
             In the workspace you have pr-diff.patch (unified diff) and pr-diff-stat.txt. Read them.
+            If diff_mode is not pr_three_dot, state in your summary that you reviewed the **fallback patch** (last commit or placeholder), not the full PR delta vs base.
 
             Focus on: injection (SQL/OS/command), authn/authz mistakes, secret or credential leakage, unsafe deserialization, SSRF, path traversal, weak crypto, logging of sensitive data, CORS misconfiguration, and dependency-related risks visible in the diff.
 
