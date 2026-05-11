@@ -1,23 +1,21 @@
 """
 Monitoring Stack - CloudWatch, X-Ray, Alarms, Dashboards
 """
-from constructs import Construct
+
 import aws_cdk as cdk
-from aws_cdk import (
-    aws_cloudwatch as cloudwatch,
-    aws_cloudwatch_actions as cw_actions,
-    aws_sns as sns,
-    aws_sns_subscriptions as sns_subscriptions,
-    aws_logs as logs,
-    aws_ecs as ecs,
-    aws_apigateway as apigw,
-    CfnOutput,
-)
+from aws_cdk import CfnOutput
+from aws_cdk import aws_apigateway as apigw
+from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_cloudwatch_actions as cw_actions
+from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_logs as logs
+from aws_cdk import aws_sns as sns
+from constructs import Construct
 
 
 class MonitoringStack(cdk.Stack):
     """Monitoring infrastructure stack."""
-    
+
     def __init__(
         self,
         scope: Construct,
@@ -27,14 +25,14 @@ class MonitoringStack(cdk.Stack):
         ecs_cluster: ecs.ICluster,
         ecs_service,  # ApplicationLoadBalancedFargateService
         api_gateway: apigw.RestApi,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        
+
         self.environment = environment
         self.project_name = project_name
         is_production = environment == "production"
-        
+
         # ======================================================================
         # SNS Topic for Alerts
         # ======================================================================
@@ -44,13 +42,13 @@ class MonitoringStack(cdk.Stack):
             topic_name=f"{project_name}-{environment}-alerts",
             display_name=f"{project_name} {environment} Alerts",
         )
-        
+
         # Add email subscription placeholder
         # Uncomment and modify with actual email
         # self.alert_topic.add_subscription(
         #     sns_subscriptions.EmailSubscription("alerts@example.com")
         # )
-        
+
         # ======================================================================
         # CloudWatch Log Groups
         # ======================================================================
@@ -58,22 +56,30 @@ class MonitoringStack(cdk.Stack):
             self,
             "ApplicationLogGroup",
             log_group_name=f"/aws/{project_name}/{environment}/application",
-            retention=logs.RetentionDays.ONE_MONTH if is_production else logs.RetentionDays.ONE_WEEK,
+            retention=(
+                logs.RetentionDays.ONE_MONTH
+                if is_production
+                else logs.RetentionDays.ONE_WEEK
+            ),
             removal_policy=cdk.RemovalPolicy.DESTROY,
         )
-        
+
         self.bedrock_log_group = logs.LogGroup(
             self,
             "BedrockLogGroup",
             log_group_name=f"/aws/{project_name}/{environment}/bedrock",
-            retention=logs.RetentionDays.ONE_MONTH if is_production else logs.RetentionDays.ONE_WEEK,
+            retention=(
+                logs.RetentionDays.ONE_MONTH
+                if is_production
+                else logs.RetentionDays.ONE_WEEK
+            ),
             removal_policy=cdk.RemovalPolicy.DESTROY,
         )
-        
+
         # ======================================================================
         # CloudWatch Alarms
         # ======================================================================
-        
+
         # ECS CPU Utilization Alarm
         ecs_cpu_alarm = cloudwatch.Alarm(
             self,
@@ -88,7 +94,7 @@ class MonitoringStack(cdk.Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
         ecs_cpu_alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
-        
+
         # ECS Memory Utilization Alarm
         ecs_memory_alarm = cloudwatch.Alarm(
             self,
@@ -103,7 +109,7 @@ class MonitoringStack(cdk.Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
         ecs_memory_alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
-        
+
         # API Gateway 5XX Errors Alarm
         api_5xx_alarm = cloudwatch.Alarm(
             self,
@@ -121,7 +127,7 @@ class MonitoringStack(cdk.Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
         api_5xx_alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
-        
+
         # API Gateway 4XX Errors Alarm
         api_4xx_alarm = cloudwatch.Alarm(
             self,
@@ -139,7 +145,7 @@ class MonitoringStack(cdk.Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
         api_4xx_alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
-        
+
         # API Gateway Latency Alarm
         api_latency_alarm = cloudwatch.Alarm(
             self,
@@ -157,7 +163,7 @@ class MonitoringStack(cdk.Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
         api_latency_alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
-        
+
         # ======================================================================
         # CloudWatch Dashboard
         # ======================================================================
@@ -166,7 +172,7 @@ class MonitoringStack(cdk.Stack):
             "Dashboard",
             dashboard_name=f"{project_name}-{environment}-dashboard",
         )
-        
+
         # ECS Metrics Row
         dashboard.add_widgets(
             cloudwatch.TextWidget(
@@ -175,7 +181,7 @@ class MonitoringStack(cdk.Stack):
                 height=1,
             ),
         )
-        
+
         dashboard.add_widgets(
             cloudwatch.GraphWidget(
                 title="ECS CPU Utilization",
@@ -206,7 +212,7 @@ class MonitoringStack(cdk.Stack):
                 height=6,
             ),
         )
-        
+
         # API Gateway Metrics Row
         dashboard.add_widgets(
             cloudwatch.TextWidget(
@@ -215,7 +221,7 @@ class MonitoringStack(cdk.Stack):
                 height=1,
             ),
         )
-        
+
         dashboard.add_widgets(
             cloudwatch.GraphWidget(
                 title="API Requests",
@@ -239,7 +245,7 @@ class MonitoringStack(cdk.Stack):
                 height=6,
             ),
         )
-        
+
         # Bedrock Metrics Row
         dashboard.add_widgets(
             cloudwatch.TextWidget(
@@ -248,7 +254,7 @@ class MonitoringStack(cdk.Stack):
                 height=1,
             ),
         )
-        
+
         dashboard.add_widgets(
             cloudwatch.GraphWidget(
                 title="Bedrock Model Invocations",
@@ -256,7 +262,9 @@ class MonitoringStack(cdk.Stack):
                     cloudwatch.Metric(
                         namespace="AWS/Bedrock",
                         metric_name="Invocations",
-                        dimensions_map={"ModelId": "anthropic.claude-3-5-sonnet-20241022-v2:0"},
+                        dimensions_map={
+                            "ModelId": "anthropic.claude-3-5-sonnet-20241022-v2:0"
+                        },
                         statistic="Sum",
                     ),
                     cloudwatch.Metric(
@@ -275,7 +283,9 @@ class MonitoringStack(cdk.Stack):
                     cloudwatch.Metric(
                         namespace="AWS/Bedrock",
                         metric_name="InvocationLatency",
-                        dimensions_map={"ModelId": "anthropic.claude-3-5-sonnet-20241022-v2:0"},
+                        dimensions_map={
+                            "ModelId": "anthropic.claude-3-5-sonnet-20241022-v2:0"
+                        },
                         statistic="p99",
                     ),
                 ],
@@ -283,7 +293,7 @@ class MonitoringStack(cdk.Stack):
                 height=6,
             ),
         )
-        
+
         # Alarms Status Row
         dashboard.add_widgets(
             cloudwatch.TextWidget(
@@ -292,7 +302,7 @@ class MonitoringStack(cdk.Stack):
                 height=1,
             ),
         )
-        
+
         dashboard.add_widgets(
             cloudwatch.AlarmStatusWidget(
                 title="All Alarms",
@@ -307,7 +317,7 @@ class MonitoringStack(cdk.Stack):
                 height=4,
             ),
         )
-        
+
         # ======================================================================
         # Outputs
         # ======================================================================
@@ -316,6 +326,5 @@ class MonitoringStack(cdk.Stack):
         CfnOutput(
             self,
             "DashboardUrl",
-            value=f"https://{self.region}.console.aws.amazon.com/cloudwatch/home?region={self.region}#dashboards:name={dashboard.dashboard_name}"
+            value=f"https://{self.region}.console.aws.amazon.com/cloudwatch/home?region={self.region}#dashboards:name={dashboard.dashboard_name}",
         )
-

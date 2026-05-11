@@ -2,7 +2,8 @@
 Agentic AI Prompt Examples
 Testing patterns for autonomous agents, multi-agent systems, and workflows.
 """
-from typing import List, Dict, Any
+
+from typing import List
 
 # =============================================================================
 # AUTONOMOUS AGENT PROMPTS
@@ -406,16 +407,10 @@ AGENTIC_PROMPTS = {
 
 
 def create_agent_system(
-    agent_type: str,
-    tools: List[str],
-    objective: str,
-    **kwargs
+    agent_type: str, tools: List[str], objective: str, **kwargs
 ) -> str:
     """Create a configured agent system prompt."""
     template = AGENTIC_PROMPTS.get(agent_type, AUTONOMOUS_AGENT_SYSTEM)
     return template.format(
-        tools="\n".join(f"- {tool}" for tool in tools),
-        objective=objective,
-        **kwargs
+        tools="\n".join(f"- {tool}" for tool in tools), objective=objective, **kwargs
     )
-

@@ -13,3 +13,19 @@ packages = ["app", "prompts", "mcp_server"]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.ruff]
+exclude = [".venv", "skills"]
+
+[tool.ruff.lint]
+# sample_bedrock_app: load_dotenv() then grouped demo imports (AIBOM catalog)
+[tool.ruff.lint.per-file-ignores]
+"sample_bedrock_app.py" = ["E402"]
+
+# Align with Black so `isort` and `black` agree on wrapped imports.
+[tool.isort]
+profile = "black"
+skip_glob = ["skills/**"]
+
+# Third-party Cursor skills catalog — not formatted with project Black rules.
+[tool.black]
+extend-exclude = "skills/"

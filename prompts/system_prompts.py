@@ -276,4 +276,3 @@ def get_system_prompt(prompt_type: str, **kwargs) -> str:
     if kwargs:
         return prompt.format(**kwargs)
     return prompt
-

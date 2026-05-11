@@ -1,32 +1,31 @@
 """
 Security Stack - IAM Roles, Policies, Secrets Manager
 """
-from constructs import Construct
+
 import aws_cdk as cdk
-from aws_cdk import (
-    aws_iam as iam,
-    aws_secretsmanager as secretsmanager,
-    aws_kms as kms,
-    CfnOutput,
-)
+from aws_cdk import CfnOutput
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_kms as kms
+from aws_cdk import aws_secretsmanager as secretsmanager
+from constructs import Construct
 
 
 class SecurityStack(cdk.Stack):
     """Security infrastructure stack."""
-    
+
     def __init__(
         self,
         scope: Construct,
         construct_id: str,
         environment: str,
         project_name: str,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        
+
         self.environment = environment
         self.project_name = project_name
-        
+
         # ======================================================================
         # KMS Key for Encryption
         # ======================================================================
@@ -36,9 +35,13 @@ class SecurityStack(cdk.Stack):
             alias=f"{project_name}-{environment}-key",
             description=f"KMS key for {project_name} {environment}",
             enable_key_rotation=True,
-            removal_policy=cdk.RemovalPolicy.RETAIN if environment == "production" else cdk.RemovalPolicy.DESTROY,
+            removal_policy=(
+                cdk.RemovalPolicy.RETAIN
+                if environment == "production"
+                else cdk.RemovalPolicy.DESTROY
+            ),
         )
-        
+
         # ======================================================================
         # Secrets Manager - API Keys
         # ======================================================================
@@ -54,7 +57,7 @@ class SecurityStack(cdk.Stack):
                 exclude_punctuation=True,
             ),
         )
-        
+
         self.anthropic_api_key_secret = secretsmanager.Secret(
             self,
             "AnthropicApiKey",
@@ -67,7 +70,7 @@ class SecurityStack(cdk.Stack):
                 exclude_punctuation=True,
             ),
         )
-        
+
         # ======================================================================
         # ECS Execution Role
         # ======================================================================
@@ -78,11 +81,13 @@ class SecurityStack(cdk.Stack):
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
             description="ECS Task Execution Role",
         )
-        
+
         self.ecs_execution_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonECSTaskExecutionRolePolicy")
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "service-role/AmazonECSTaskExecutionRolePolicy"
+            )
         )
-        
+
         # Allow reading secrets
         self.ecs_execution_role.add_to_policy(
             iam.PolicyStatement(
@@ -97,10 +102,10 @@ class SecurityStack(cdk.Stack):
                 ],
             )
         )
-        
+
         # Allow KMS decrypt
         self.kms_key.grant_decrypt(self.ecs_execution_role)
-        
+
         # ======================================================================
         # ECS Task Role
         # ======================================================================
@@ -111,7 +116,7 @@ class SecurityStack(cdk.Stack):
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
             description="ECS Task Role with Bedrock access",
         )
-        
+
         # Bedrock access policy
         self.ecs_task_role.add_to_policy(
             iam.PolicyStatement(
@@ -132,7 +137,7 @@ class SecurityStack(cdk.Stack):
                 resources=["*"],
             )
         )
-        
+
         # S3 access policy (will be refined in storage stack)
         self.ecs_task_role.add_to_policy(
             iam.PolicyStatement(
@@ -150,7 +155,7 @@ class SecurityStack(cdk.Stack):
                 ],
             )
         )
-        
+
         # DynamoDB access
         self.ecs_task_role.add_to_policy(
             iam.PolicyStatement(
@@ -171,7 +176,7 @@ class SecurityStack(cdk.Stack):
                 ],
             )
         )
-        
+
         # CloudWatch access
         self.ecs_task_role.add_to_policy(
             iam.PolicyStatement(
@@ -186,7 +191,7 @@ class SecurityStack(cdk.Stack):
                 resources=["*"],
             )
         )
-        
+
         # X-Ray access
         self.ecs_task_role.add_to_policy(
             iam.PolicyStatement(
@@ -201,7 +206,7 @@ class SecurityStack(cdk.Stack):
                 resources=["*"],
             )
         )
-        
+
         # ======================================================================
         # Bedrock Agent Execution Role
         # ======================================================================
@@ -212,7 +217,7 @@ class SecurityStack(cdk.Stack):
             assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
             description="Bedrock Agent Execution Role",
         )
-        
+
         self.bedrock_execution_role.add_to_policy(
             iam.PolicyStatement(
                 sid="BedrockModelAccess",
@@ -230,7 +235,7 @@ class SecurityStack(cdk.Stack):
                 ],
             )
         )
-        
+
         self.bedrock_execution_role.add_to_policy(
             iam.PolicyStatement(
                 sid="S3KnowledgeBaseAccess",
@@ -245,7 +250,7 @@ class SecurityStack(cdk.Stack):
                 ],
             )
         )
-        
+
         # ======================================================================
         # Lambda Execution Role
         # ======================================================================
@@ -256,11 +261,13 @@ class SecurityStack(cdk.Stack):
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             description="Lambda Execution Role",
         )
-        
+
         self.lambda_execution_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaVPCAccessExecutionRole")
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "service-role/AWSLambdaVPCAccessExecutionRole"
+            )
         )
-        
+
         # Bedrock access for Lambda
         self.lambda_execution_role.add_to_policy(
             iam.PolicyStatement(
@@ -274,7 +281,7 @@ class SecurityStack(cdk.Stack):
                 resources=["*"],
             )
         )
-        
+
         # ======================================================================
         # GitHub Actions OIDC Provider and Role
         # ======================================================================
@@ -284,7 +291,7 @@ class SecurityStack(cdk.Stack):
             url="https://token.actions.githubusercontent.com",
             client_ids=["sts.amazonaws.com"],
         )
-        
+
         self.github_actions_role = iam.Role(
             self,
             "GitHubActionsRole",
@@ -305,12 +312,14 @@ class SecurityStack(cdk.Stack):
             description="Role for GitHub Actions deployments",
             max_session_duration=cdk.Duration.hours(1),
         )
-        
+
         # GitHub Actions permissions
         self.github_actions_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonEC2ContainerRegistryPowerUser")
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonEC2ContainerRegistryPowerUser"
+            )
         )
-        
+
         self.github_actions_role.add_to_policy(
             iam.PolicyStatement(
                 sid="ECSDeployment",
@@ -326,7 +335,7 @@ class SecurityStack(cdk.Stack):
                 resources=["*"],
             )
         )
-        
+
         self.github_actions_role.add_to_policy(
             iam.PolicyStatement(
                 sid="CDKDeployment",
@@ -339,13 +348,14 @@ class SecurityStack(cdk.Stack):
                 resources=["*"],
             )
         )
-        
+
         # ======================================================================
         # Outputs
         # ======================================================================
         CfnOutput(self, "ECSExecutionRoleArn", value=self.ecs_execution_role.role_arn)
         CfnOutput(self, "ECSTaskRoleArn", value=self.ecs_task_role.role_arn)
-        CfnOutput(self, "BedrockExecutionRoleArn", value=self.bedrock_execution_role.role_arn)
+        CfnOutput(
+            self, "BedrockExecutionRoleArn", value=self.bedrock_execution_role.role_arn
+        )
         CfnOutput(self, "GitHubActionsRoleArn", value=self.github_actions_role.role_arn)
         CfnOutput(self, "KMSKeyArn", value=self.kms_key.key_arn)
-

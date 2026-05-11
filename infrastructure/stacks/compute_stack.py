@@ -1,26 +1,23 @@
 """
 Compute Stack - ECS Fargate, Lambda, API Gateway
 """
-from constructs import Construct
+
 import aws_cdk as cdk
-from aws_cdk import (
-    aws_ec2 as ec2,
-    aws_ecs as ecs,
-    aws_ecs_patterns as ecs_patterns,
-    aws_iam as iam,
-    aws_s3 as s3,
-    aws_lambda as _lambda,
-    aws_apigateway as apigw,
-    aws_logs as logs,
-    aws_elasticloadbalancingv2 as elbv2,
-    aws_certificatemanager as acm,
-    CfnOutput,
-)
+from aws_cdk import CfnOutput
+from aws_cdk import aws_apigateway as apigw
+from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_ecs_patterns as ecs_patterns
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_lambda as _lambda
+from aws_cdk import aws_logs as logs
+from aws_cdk import aws_s3 as s3
+from constructs import Construct
 
 
 class ComputeStack(cdk.Stack):
     """Compute infrastructure stack."""
-    
+
     def __init__(
         self,
         scope: Construct,
@@ -32,14 +29,14 @@ class ComputeStack(cdk.Stack):
         task_role: iam.IRole,
         data_bucket: s3.IBucket,
         bedrock_agent_id: str,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        
+
         self.environment = environment
         self.project_name = project_name
         is_production = environment == "production"
-        
+
         # ======================================================================
         # ECS Cluster
         # ======================================================================
@@ -51,7 +48,7 @@ class ComputeStack(cdk.Stack):
             container_insights=True,
             enable_fargate_capacity_providers=True,
         )
-        
+
         # ======================================================================
         # ECS Task Definition
         # ======================================================================
@@ -64,7 +61,7 @@ class ComputeStack(cdk.Stack):
             execution_role=execution_role,
             task_role=task_role,
         )
-        
+
         # Main container
         container = task_definition.add_container(
             "AppContainer",
@@ -96,14 +93,14 @@ class ComputeStack(cdk.Stack):
                 start_period=cdk.Duration.seconds(60),
             ),
         )
-        
+
         container.add_port_mappings(
             ecs.PortMapping(
                 container_port=8080,
                 protocol=ecs.Protocol.TCP,
             )
         )
-        
+
         # X-Ray sidecar container
         xray_container = task_definition.add_container(
             "XRayDaemon",
@@ -116,14 +113,14 @@ class ComputeStack(cdk.Stack):
             cpu=32,
             memory_limit_mib=256,
         )
-        
+
         xray_container.add_port_mappings(
             ecs.PortMapping(
                 container_port=2000,
                 protocol=ecs.Protocol.UDP,
             )
         )
-        
+
         # ======================================================================
         # Application Load Balancer & Fargate Service
         # ======================================================================
@@ -136,7 +133,9 @@ class ComputeStack(cdk.Stack):
             desired_count=2 if is_production else 1,
             public_load_balancer=True,
             assign_public_ip=False,
-            task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            task_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+            ),
             enable_execute_command=True,  # For debugging
             circuit_breaker=ecs.DeploymentCircuitBreaker(
                 rollback=True,
@@ -147,7 +146,7 @@ class ComputeStack(cdk.Stack):
             min_healthy_percent=50 if is_production else 0,
             max_healthy_percent=200,
         )
-        
+
         # Configure health check
         self.ecs_service.target_group.configure_health_check(
             path="/health",
@@ -157,27 +156,27 @@ class ComputeStack(cdk.Stack):
             healthy_threshold_count=2,
             unhealthy_threshold_count=3,
         )
-        
+
         # Auto-scaling
         scaling = self.ecs_service.service.auto_scale_task_count(
             min_capacity=1 if not is_production else 2,
             max_capacity=10 if is_production else 4,
         )
-        
+
         scaling.scale_on_cpu_utilization(
             "CpuScaling",
             target_utilization_percent=70,
             scale_in_cooldown=cdk.Duration.seconds(60),
             scale_out_cooldown=cdk.Duration.seconds(60),
         )
-        
+
         scaling.scale_on_memory_utilization(
             "MemoryScaling",
             target_utilization_percent=80,
             scale_in_cooldown=cdk.Duration.seconds(60),
             scale_out_cooldown=cdk.Duration.seconds(60),
         )
-        
+
         # ======================================================================
         # API Gateway
         # ======================================================================
@@ -200,13 +199,13 @@ class ComputeStack(cdk.Stack):
                 allow_headers=["Content-Type", "Authorization", "X-Api-Key"],
             ),
         )
-        
+
         # API Key and Usage Plan
         api_key = self.api_gateway.add_api_key(
             "ApiKey",
             api_key_name=f"{project_name}-{environment}-key",
         )
-        
+
         usage_plan = self.api_gateway.add_usage_plan(
             "UsagePlan",
             name=f"{project_name}-{environment}-usage-plan",
@@ -219,16 +218,16 @@ class ComputeStack(cdk.Stack):
                 period=apigw.Period.DAY,
             ),
         )
-        
+
         usage_plan.add_api_key(api_key)
         usage_plan.add_api_stage(
             stage=self.api_gateway.deployment_stage,
         )
-        
+
         # ======================================================================
         # Lambda Functions
         # ======================================================================
-        
+
         # Bedrock Invocation Lambda
         bedrock_lambda = _lambda.Function(
             self,
@@ -236,7 +235,8 @@ class ComputeStack(cdk.Stack):
             function_name=f"{project_name}-{environment}-bedrock-invoke",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.handler",
-            code=_lambda.Code.from_inline("""
+            code=_lambda.Code.from_inline(
+                """
 import json
 import boto3
 import os
@@ -287,7 +287,8 @@ def handler(event, context):
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': str(e)})
         }
-"""),
+"""
+            ),
             timeout=cdk.Duration.seconds(120),
             memory_size=512,
             environment={
@@ -296,7 +297,7 @@ def handler(event, context):
             },
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
-        
+
         # Grant Bedrock permissions
         bedrock_lambda.add_to_role_policy(
             iam.PolicyStatement(
@@ -308,20 +309,20 @@ def handler(event, context):
                 resources=["*"],
             )
         )
-        
+
         # API Gateway integration for Lambda
         bedrock_integration = apigw.LambdaIntegration(
             bedrock_lambda,
             proxy=True,
         )
-        
+
         bedrock_resource = self.api_gateway.root.add_resource("invoke")
         bedrock_resource.add_method(
             "POST",
             bedrock_integration,
             api_key_required=True,
         )
-        
+
         # Agent Invocation Lambda
         agent_lambda = _lambda.Function(
             self,
@@ -329,7 +330,8 @@ def handler(event, context):
             function_name=f"{project_name}-{environment}-agent-invoke",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.handler",
-            code=_lambda.Code.from_inline("""
+            code=_lambda.Code.from_inline(
+                """
 import json
 import boto3
 import os
@@ -379,7 +381,8 @@ def handler(event, context):
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'error': str(e)})
         }
-"""),
+"""
+            ),
             timeout=cdk.Duration.seconds(120),
             memory_size=512,
             environment={
@@ -388,7 +391,7 @@ def handler(event, context):
             },
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
-        
+
         agent_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=[
@@ -397,17 +400,20 @@ def handler(event, context):
                 resources=["*"],
             )
         )
-        
+
         agent_integration = apigw.LambdaIntegration(agent_lambda, proxy=True)
         agent_resource = self.api_gateway.root.add_resource("agent")
         agent_resource.add_method("POST", agent_integration, api_key_required=True)
-        
+
         # ======================================================================
         # Outputs
         # ======================================================================
         CfnOutput(self, "ClusterName", value=self.ecs_cluster.cluster_name)
         CfnOutput(self, "ServiceName", value=self.ecs_service.service.service_name)
-        CfnOutput(self, "LoadBalancerDNS", value=self.ecs_service.load_balancer.load_balancer_dns_name)
+        CfnOutput(
+            self,
+            "LoadBalancerDNS",
+            value=self.ecs_service.load_balancer.load_balancer_dns_name,
+        )
         CfnOutput(self, "ApiGatewayUrl", value=self.api_gateway.url)
         CfnOutput(self, "ApiKeyId", value=api_key.key_id)
-

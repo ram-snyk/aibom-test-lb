@@ -3,9 +3,10 @@ AIBOM Test Application - FastAPI Entry Point
 
 A sample AI/ML application demonstrating AWS Bedrock and AgentCore integration.
 """
+
 import os
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Dict, Optional
 
 import boto3
 from fastapi import FastAPI, HTTPException
@@ -62,12 +63,12 @@ class InvokeRequest(BaseModel):
 class InvokeResponse(BaseModel):
     response: str
     model: str
-    usage: dict[str, Any] | None = None
+    usage: Optional[Dict[str, Any]] = None
 
 
 class AgentRequest(BaseModel):
     input: str
-    session_id: str | None = None
+    session_id: Optional[str] = None
 
 
 class AgentResponse(BaseModel):
@@ -79,11 +80,7 @@ class AgentResponse(BaseModel):
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    return HealthResponse(
-        status="healthy",
-        environment=ENVIRONMENT,
-        version="1.0.0"
-    )
+    return HealthResponse(status="healthy", environment=ENVIRONMENT, version="1.0.0")
 
 
 # Bedrock model invocation
@@ -92,27 +89,28 @@ async def invoke_model(request: InvokeRequest):
     """Invoke a Bedrock model directly."""
     try:
         bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
-        
+
         import json
+
         response = bedrock_runtime.invoke_model(
             modelId=request.model_id,
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": request.max_tokens,
-                "messages": [
-                    {"role": "user", "content": request.prompt}
-                ]
-            }),
+            body=json.dumps(
+                {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": request.max_tokens,
+                    "messages": [{"role": "user", "content": request.prompt}],
+                }
+            ),
             contentType="application/json",
-            accept="application/json"
+            accept="application/json",
         )
-        
+
         response_body = json.loads(response["body"].read())
-        
+
         return InvokeResponse(
             response=response_body.get("content", [{}])[0].get("text", ""),
             model=request.model_id,
-            usage=response_body.get("usage")
+            usage=response_body.get("usage"),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -124,20 +122,23 @@ async def invoke_agent(request: AgentRequest):
     """Invoke the Bedrock Agent."""
     if not BEDROCK_AGENT_ID:
         raise HTTPException(status_code=503, detail="Bedrock Agent not configured")
-    
+
     try:
         import uuid
-        bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=AWS_REGION)
-        
+
+        bedrock_agent_runtime = boto3.client(
+            "bedrock-agent-runtime", region_name=AWS_REGION
+        )
+
         session_id = request.session_id or str(uuid.uuid4())
-        
+
         response = bedrock_agent_runtime.invoke_agent(
             agentId=BEDROCK_AGENT_ID,
             agentAliasId=BEDROCK_AGENT_ALIAS_ID,
             sessionId=session_id,
             inputText=request.input,
         )
-        
+
         # Collect response chunks
         output_text = ""
         for event in response.get("completion", []):
@@ -145,11 +146,8 @@ async def invoke_agent(request: AgentRequest):
                 chunk = event["chunk"]
                 if "bytes" in chunk:
                     output_text += chunk["bytes"].decode("utf-8")
-        
-        return AgentResponse(
-            response=output_text,
-            session_id=session_id
-        )
+
+        return AgentResponse(response=output_text, session_id=session_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -160,11 +158,9 @@ async def list_models():
     """List available Bedrock foundation models."""
     try:
         bedrock = boto3.client("bedrock", region_name=AWS_REGION)
-        
-        response = bedrock.list_foundation_models(
-            byOutputModality="TEXT"
-        )
-        
+
+        response = bedrock.list_foundation_models(byOutputModality="TEXT")
+
         models = [
             {
                 "model_id": model["modelId"],
@@ -175,7 +171,7 @@ async def list_models():
             }
             for model in response.get("modelSummaries", [])
         ]
-        
+
         return {"models": models}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -183,5 +179,5 @@ async def list_models():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
 
+    uvicorn.run(app, host="0.0.0.0", port=8080)

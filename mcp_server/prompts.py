@@ -6,8 +6,6 @@ These prompts are designed for AI assistant interactions through the
 Model Context Protocol.
 """
 
-from typing import Dict, List, Any
-
 # =============================================================================
 # AIBOM Analysis Prompts
 # =============================================================================
@@ -490,16 +488,16 @@ def get_mcp_prompt(name: str, **kwargs) -> str:
     template = MCP_PROMPT_REGISTRY.get(name)
     if not template:
         raise ValueError(f"Unknown prompt: {name}")
-    
+
     # Fill in provided kwargs, leave others as placeholders
     try:
         return template.format(**kwargs)
-    except KeyError as e:
+    except KeyError:
         # Return template with unfilled variables marked
         return template
 
 
-def list_mcp_prompts() -> List[Dict[str, str]]:
+def list_mcp_prompts() -> list[dict[str, str]]:
     """List all available MCP prompts with descriptions."""
     descriptions = {
         "aibom_quick_scan": "Quick scan for AI/ML components",
@@ -516,9 +514,8 @@ def list_mcp_prompts() -> List[Dict[str, str]]:
         "code_review_ai": "AI code review",
         "prompt_engineering_review": "Prompt optimization review",
     }
-    
+
     return [
         {"name": name, "description": descriptions.get(name, "")}
         for name in MCP_PROMPT_REGISTRY.keys()
     ]
-

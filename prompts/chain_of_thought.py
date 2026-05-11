@@ -321,4 +321,3 @@ def get_cot_prompt(prompt_type: str, **kwargs) -> str:
     if kwargs:
         return template.format(**kwargs)
     return template
-

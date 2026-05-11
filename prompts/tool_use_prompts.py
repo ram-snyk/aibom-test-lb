@@ -2,8 +2,9 @@
 Tool Use and Function Calling Prompt Examples
 Testing if AIBOM can detect tool/function calling patterns.
 """
+
 import json
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 # =============================================================================
 # OPENAI FUNCTION CALLING FORMAT
@@ -20,17 +21,17 @@ OPENAI_TOOLS_DEFINITION = [
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "The city and state, e.g., San Francisco, CA"
+                        "description": "The city and state, e.g., San Francisco, CA",
                     },
                     "unit": {
                         "type": "string",
                         "enum": ["celsius", "fahrenheit"],
-                        "description": "The temperature unit"
-                    }
+                        "description": "The temperature unit",
+                    },
                 },
-                "required": ["location"]
-            }
-        }
+                "required": ["location"],
+            },
+        },
     },
     {
         "type": "function",
@@ -40,22 +41,19 @@ OPENAI_TOOLS_DEFINITION = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query"
-                    },
+                    "query": {"type": "string", "description": "The search query"},
                     "table": {
                         "type": "string",
-                        "description": "The database table to search"
+                        "description": "The database table to search",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of results"
-                    }
+                        "description": "Maximum number of results",
+                    },
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -65,22 +63,13 @@ OPENAI_TOOLS_DEFINITION = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "to": {
-                        "type": "string",
-                        "description": "Email recipient"
-                    },
-                    "subject": {
-                        "type": "string",
-                        "description": "Email subject"
-                    },
-                    "body": {
-                        "type": "string",
-                        "description": "Email body content"
-                    }
+                    "to": {"type": "string", "description": "Email recipient"},
+                    "subject": {"type": "string", "description": "Email subject"},
+                    "body": {"type": "string", "description": "Email body content"},
                 },
-                "required": ["to", "subject", "body"]
-            }
-        }
+                "required": ["to", "subject", "body"],
+            },
+        },
     },
     {
         "type": "function",
@@ -90,19 +79,16 @@ OPENAI_TOOLS_DEFINITION = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "Python code to execute"
-                    },
+                    "code": {"type": "string", "description": "Python code to execute"},
                     "timeout": {
                         "type": "integer",
-                        "description": "Execution timeout in seconds"
-                    }
+                        "description": "Execution timeout in seconds",
+                    },
                 },
-                "required": ["code"]
-            }
-        }
-    }
+                "required": ["code"],
+            },
+        },
+    },
 ]
 
 # =============================================================================
@@ -118,11 +104,11 @@ ANTHROPIC_TOOLS_DEFINITION = [
             "properties": {
                 "ticker": {
                     "type": "string",
-                    "description": "The stock ticker symbol, e.g., AAPL, GOOGL"
+                    "description": "The stock ticker symbol, e.g., AAPL, GOOGL",
                 }
             },
-            "required": ["ticker"]
-        }
+            "required": ["ticker"],
+        },
     },
     {
         "name": "create_calendar_event",
@@ -130,26 +116,20 @@ ANTHROPIC_TOOLS_DEFINITION = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Event title"
-                },
+                "title": {"type": "string", "description": "Event title"},
                 "start_time": {
                     "type": "string",
-                    "description": "Start time in ISO format"
+                    "description": "Start time in ISO format",
                 },
-                "end_time": {
-                    "type": "string",
-                    "description": "End time in ISO format"
-                },
+                "end_time": {"type": "string", "description": "End time in ISO format"},
                 "attendees": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of attendee email addresses"
-                }
+                    "description": "List of attendee email addresses",
+                },
             },
-            "required": ["title", "start_time", "end_time"]
-        }
+            "required": ["title", "start_time", "end_time"],
+        },
     },
     {
         "name": "analyze_image",
@@ -159,17 +139,17 @@ ANTHROPIC_TOOLS_DEFINITION = [
             "properties": {
                 "image_url": {
                     "type": "string",
-                    "description": "URL of the image to analyze"
+                    "description": "URL of the image to analyze",
                 },
                 "analysis_type": {
                     "type": "string",
                     "enum": ["objects", "text", "faces", "scene"],
-                    "description": "Type of analysis to perform"
-                }
+                    "description": "Type of analysis to perform",
+                },
             },
-            "required": ["image_url"]
-        }
-    }
+            "required": ["image_url"],
+        },
+    },
 ]
 
 # =============================================================================
@@ -181,7 +161,7 @@ BEDROCK_ACTION_GROUP_SCHEMA = {
     "info": {
         "title": "AI Agent Actions API",
         "version": "1.0.0",
-        "description": "API for AI agent actions and tools"
+        "description": "API for AI agent actions and tools",
     },
     "paths": {
         "/search": {
@@ -197,23 +177,19 @@ BEDROCK_ACTION_GROUP_SCHEMA = {
                                 "properties": {
                                     "query": {
                                         "type": "string",
-                                        "description": "Search query"
+                                        "description": "Search query",
                                     },
                                     "top_k": {
                                         "type": "integer",
-                                        "description": "Number of results to return"
-                                    }
+                                        "description": "Number of results to return",
+                                    },
                                 },
-                                "required": ["query"]
+                                "required": ["query"],
                             }
                         }
-                    }
+                    },
                 },
-                "responses": {
-                    "200": {
-                        "description": "Search results"
-                    }
-                }
+                "responses": {"200": {"description": "Search results"}},
             }
         },
         "/execute-task": {
@@ -229,25 +205,19 @@ BEDROCK_ACTION_GROUP_SCHEMA = {
                                 "properties": {
                                     "task_type": {
                                         "type": "string",
-                                        "enum": ["summarize", "translate", "analyze"]
+                                        "enum": ["summarize", "translate", "analyze"],
                                     },
-                                    "input_data": {
-                                        "type": "string"
-                                    }
+                                    "input_data": {"type": "string"},
                                 },
-                                "required": ["task_type", "input_data"]
+                                "required": ["task_type", "input_data"],
                             }
                         }
-                    }
+                    },
                 },
-                "responses": {
-                    "200": {
-                        "description": "Task result"
-                    }
-                }
+                "responses": {"200": {"description": "Task result"}},
             }
-        }
-    }
+        },
+    },
 }
 
 # =============================================================================
@@ -325,11 +295,8 @@ TOOL_USE_EXAMPLES = [
         "thought": "The user wants weather information for a specific location. I should use the get_weather tool.",
         "tool_call": {
             "name": "get_weather",
-            "arguments": {
-                "location": "Tokyo, Japan",
-                "unit": "celsius"
-            }
-        }
+            "arguments": {"location": "Tokyo, Japan", "unit": "celsius"},
+        },
     },
     {
         "user_query": "Send an email to john@example.com about the meeting tomorrow",
@@ -339,9 +306,9 @@ TOOL_USE_EXAMPLES = [
             "arguments": {
                 "to": "john@example.com",
                 "subject": "Meeting Tomorrow",
-                "body": "Hi John,\n\nThis is a reminder about our meeting tomorrow.\n\nBest regards"
-            }
-        }
+                "body": "Hi John,\n\nThis is a reminder about our meeting tomorrow.\n\nBest regards",
+            },
+        },
     },
     {
         "user_query": "Calculate 15% tip on a $67.50 bill",
@@ -350,9 +317,9 @@ TOOL_USE_EXAMPLES = [
             "name": "execute_code",
             "arguments": {
                 "code": "bill = 67.50\ntip_percent = 0.15\ntip = bill * tip_percent\nprint(f'Tip: ${tip:.2f}')"
-            }
-        }
-    }
+            },
+        },
+    },
 ]
 
 # =============================================================================
@@ -367,11 +334,9 @@ MCP_TOOLS = {
             "description": "Read contents of a file",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "File path"}
-                },
-                "required": ["path"]
-            }
+                "properties": {"path": {"type": "string", "description": "File path"}},
+                "required": ["path"],
+            },
         },
         {
             "name": "write_file",
@@ -380,10 +345,10 @@ MCP_TOOLS = {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
-                    "content": {"type": "string"}
+                    "content": {"type": "string"},
                 },
-                "required": ["path", "content"]
-            }
+                "required": ["path", "content"],
+            },
         },
         {
             "name": "execute_command",
@@ -392,17 +357,18 @@ MCP_TOOLS = {
                 "type": "object",
                 "properties": {
                     "command": {"type": "string"},
-                    "cwd": {"type": "string"}
+                    "cwd": {"type": "string"},
                 },
-                "required": ["command"]
-            }
-        }
-    ]
+                "required": ["command"],
+            },
+        },
+    ],
 }
 
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
+
 
 def format_tools_for_prompt(tools: List[Dict]) -> str:
     """Format tool definitions for inclusion in prompts."""
@@ -414,7 +380,9 @@ def format_tools_for_prompt(tools: List[Dict]) -> str:
         elif "input_schema" in tool:  # Anthropic format
             lines.append(f"- {tool['name']}: {tool['description']}")
         else:
-            lines.append(f"- {tool.get('name', 'unknown')}: {tool.get('description', '')}")
+            lines.append(
+                f"- {tool.get('name', 'unknown')}: {tool.get('description', '')}"
+            )
     return "\n".join(lines)
 
 
@@ -427,12 +395,9 @@ def create_tool_call_message(tool_name: str, arguments: Dict[str, Any]) -> Dict:
             {
                 "id": f"call_{tool_name}",
                 "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "arguments": json.dumps(arguments)
-                }
+                "function": {"name": tool_name, "arguments": json.dumps(arguments)},
             }
-        ]
+        ],
     }
 
 
@@ -446,4 +411,3 @@ TOOL_REGISTRIES = {
     "bedrock": BEDROCK_ACTION_GROUP_SCHEMA,
     "mcp": MCP_TOOLS,
 }
-

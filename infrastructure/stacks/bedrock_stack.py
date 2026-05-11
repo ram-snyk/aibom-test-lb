@@ -1,21 +1,20 @@
 """
 Bedrock Stack - Bedrock Agents, Knowledge Bases, AgentCore
 """
-from constructs import Construct
+
 import aws_cdk as cdk
-from aws_cdk import (
-    aws_iam as iam,
-    aws_s3 as s3,
-    aws_bedrock as bedrock,
-    aws_lambda as _lambda,
-    aws_logs as logs,
-    CfnOutput,
-)
+from aws_cdk import CfnOutput
+from aws_cdk import aws_bedrock as bedrock
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_lambda as _lambda
+from aws_cdk import aws_logs as logs
+from aws_cdk import aws_s3 as s3
+from constructs import Construct
 
 
 class BedrockStack(cdk.Stack):
     """Bedrock and AgentCore infrastructure stack."""
-    
+
     def __init__(
         self,
         scope: Construct,
@@ -24,19 +23,19 @@ class BedrockStack(cdk.Stack):
         project_name: str,
         execution_role: iam.IRole,
         data_bucket: s3.IBucket,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        
+
         self.environment = environment
         self.project_name = project_name
-        
+
         # ======================================================================
         # Bedrock Knowledge Base
         # ======================================================================
         # Note: Knowledge Base requires OpenSearch Serverless collection
         # This is a placeholder - actual KB creation requires additional resources
-        
+
         # Create knowledge base IAM role
         kb_role = iam.Role(
             self,
@@ -44,7 +43,7 @@ class BedrockStack(cdk.Stack):
             role_name=f"{project_name}-{environment}-kb-role",
             assumed_by=iam.ServicePrincipal("bedrock.amazonaws.com"),
         )
-        
+
         kb_role.add_to_policy(
             iam.PolicyStatement(
                 sid="S3Access",
@@ -59,7 +58,7 @@ class BedrockStack(cdk.Stack):
                 ],
             )
         )
-        
+
         kb_role.add_to_policy(
             iam.PolicyStatement(
                 sid="BedrockModelAccess",
@@ -73,7 +72,7 @@ class BedrockStack(cdk.Stack):
                 ],
             )
         )
-        
+
         # ======================================================================
         # Bedrock Agent
         # ======================================================================
@@ -104,9 +103,9 @@ If you're unsure about something, say so rather than making up information.""",
             auto_prepare=True,
             skip_resource_in_use_check_on_delete=True,
         )
-        
+
         self.agent_id = self.agent.attr_agent_id
-        
+
         # ======================================================================
         # Bedrock Agent Alias
         # ======================================================================
@@ -117,7 +116,7 @@ If you're unsure about something, say so rather than making up information.""",
             agent_alias_name=environment,
             description=f"{environment} alias for {project_name} agent",
         )
-        
+
         # ======================================================================
         # Agent Action Group Lambda
         # ======================================================================
@@ -127,7 +126,8 @@ If you're unsure about something, say so rather than making up information.""",
             function_name=f"{project_name}-{environment}-agent-actions",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.handler",
-            code=_lambda.Code.from_inline("""
+            code=_lambda.Code.from_inline(
+                """
 import json
 import boto3
 
@@ -167,12 +167,13 @@ def handler(event, context):
             "responseBody": response_body
         }
     }
-"""),
+"""
+            ),
             timeout=cdk.Duration.seconds(30),
             memory_size=256,
             log_retention=logs.RetentionDays.ONE_WEEK,
         )
-        
+
         # Grant Bedrock permission to invoke Lambda
         action_group_lambda.add_permission(
             "BedrockInvokePermission",
@@ -180,7 +181,7 @@ def handler(event, context):
             action="lambda:InvokeFunction",
             source_arn=f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
         )
-        
+
         # ======================================================================
         # Bedrock Guardrail
         # ======================================================================
@@ -194,75 +195,67 @@ def handler(event, context):
             content_policy_config=bedrock.CfnGuardrail.ContentPolicyConfigProperty(
                 filters_config=[
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
-                        type="HATE",
-                        input_strength="HIGH",
-                        output_strength="HIGH"
+                        type="HATE", input_strength="HIGH", output_strength="HIGH"
                     ),
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
-                        type="VIOLENCE",
-                        input_strength="HIGH",
-                        output_strength="HIGH"
+                        type="VIOLENCE", input_strength="HIGH", output_strength="HIGH"
                     ),
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
-                        type="SEXUAL",
-                        input_strength="HIGH",
-                        output_strength="HIGH"
+                        type="SEXUAL", input_strength="HIGH", output_strength="HIGH"
                     ),
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
                         type="INSULTS",
                         input_strength="MEDIUM",
-                        output_strength="MEDIUM"
+                        output_strength="MEDIUM",
                     ),
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
-                        type="MISCONDUCT",
-                        input_strength="HIGH",
-                        output_strength="HIGH"
+                        type="MISCONDUCT", input_strength="HIGH", output_strength="HIGH"
                     ),
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
                         type="PROMPT_ATTACK",
                         input_strength="HIGH",
-                        output_strength="NONE"
+                        output_strength="NONE",
                     ),
                 ]
             ),
             sensitive_information_policy_config=bedrock.CfnGuardrail.SensitiveInformationPolicyConfigProperty(
                 pii_entities_config=[
                     bedrock.CfnGuardrail.PiiEntityConfigProperty(
-                        type="EMAIL",
-                        action="ANONYMIZE"
+                        type="EMAIL", action="ANONYMIZE"
                     ),
                     bedrock.CfnGuardrail.PiiEntityConfigProperty(
-                        type="PHONE",
-                        action="ANONYMIZE"
+                        type="PHONE", action="ANONYMIZE"
                     ),
                     bedrock.CfnGuardrail.PiiEntityConfigProperty(
-                        type="US_SOCIAL_SECURITY_NUMBER",
-                        action="BLOCK"
+                        type="US_SOCIAL_SECURITY_NUMBER", action="BLOCK"
                     ),
                     bedrock.CfnGuardrail.PiiEntityConfigProperty(
-                        type="CREDIT_DEBIT_CARD_NUMBER",
-                        action="BLOCK"
+                        type="CREDIT_DEBIT_CARD_NUMBER", action="BLOCK"
                     ),
                 ]
             ),
         )
-        
+
         # ======================================================================
         # Guardrail Version
         # ======================================================================
-        guardrail_version = bedrock.CfnGuardrailVersion(
+        self.guardrail_version = bedrock.CfnGuardrailVersion(
             self,
             "GuardrailVersion",
             guardrail_identifier=self.guardrail.attr_guardrail_id,
             description=f"Version for {environment}",
         )
-        
+
         # ======================================================================
         # Outputs
         # ======================================================================
-        CfnOutput(self, "AgentId", value=self.agent.attr_agent_id, export_name=f"{project_name}-{environment}-agent-id")
+        CfnOutput(
+            self,
+            "AgentId",
+            value=self.agent.attr_agent_id,
+            export_name=f"{project_name}-{environment}-agent-id",
+        )
         CfnOutput(self, "AgentArn", value=self.agent.attr_agent_arn)
         CfnOutput(self, "AgentAliasId", value=self.agent_alias.attr_agent_alias_id)
         CfnOutput(self, "GuardrailId", value=self.guardrail.attr_guardrail_id)
         CfnOutput(self, "ActionGroupLambdaArn", value=action_group_lambda.function_arn)
-

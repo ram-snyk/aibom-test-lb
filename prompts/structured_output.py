@@ -2,16 +2,20 @@
 Structured Output Prompt Examples
 Testing if AIBOM can detect JSON/schema output patterns.
 """
-from typing import Dict, List, Any, Optional
-from pydantic import BaseModel, Field
+
 import json
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 # =============================================================================
 # PYDANTIC OUTPUT SCHEMAS
 # =============================================================================
 
+
 class EntityExtraction(BaseModel):
     """Schema for extracted entities."""
+
     entities: List[Dict[str, str]] = Field(description="List of extracted entities")
     confidence: float = Field(ge=0, le=1, description="Extraction confidence")
     raw_text: str = Field(description="Original input text")
@@ -19,13 +23,17 @@ class EntityExtraction(BaseModel):
 
 class SentimentResult(BaseModel):
     """Schema for sentiment analysis."""
+
     sentiment: str = Field(description="positive, negative, neutral, or mixed")
     confidence: float = Field(ge=0, le=1)
-    aspects: List[Dict[str, str]] = Field(default=[], description="Aspect-based sentiments")
+    aspects: List[Dict[str, str]] = Field(
+        default=[], description="Aspect-based sentiments"
+    )
 
 
 class CodeAnalysis(BaseModel):
     """Schema for code analysis results."""
+
     language: str
     complexity_score: int = Field(ge=0, le=100)
     issues: List[Dict[str, Any]] = Field(default=[])
@@ -35,6 +43,7 @@ class CodeAnalysis(BaseModel):
 
 class DocumentSummary(BaseModel):
     """Schema for document summarization."""
+
     title: Optional[str] = None
     summary: str
     key_points: List[str]
@@ -44,9 +53,12 @@ class DocumentSummary(BaseModel):
 
 class ClassificationResult(BaseModel):
     """Schema for multi-class classification."""
+
     primary_class: str
     confidence: float
-    all_classes: List[Dict[str, float]] = Field(description="All classes with probabilities")
+    all_classes: List[Dict[str, float]] = Field(
+        description="All classes with probabilities"
+    )
 
 
 # =============================================================================
@@ -334,11 +346,10 @@ def validate_output(output: str, schema_name: str) -> tuple[bool, Any]:
     schema_class = OUTPUT_SCHEMAS.get(schema_name)
     if not schema_class:
         return False, "Unknown schema"
-    
+
     try:
         data = json.loads(output)
         validated = schema_class(**data)
         return True, validated
     except Exception as e:
         return False, str(e)
-

@@ -269,4 +269,3 @@ def get_eval_prompt(eval_type: str, **kwargs) -> str:
     if kwargs and template:
         return template.format(**kwargs)
     return template
-
