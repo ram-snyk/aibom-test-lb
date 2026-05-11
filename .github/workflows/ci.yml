@@ -1,5 +1,6 @@
 # =============================================================================
-# CI Pipeline - Build, Test, and Security Scan
+# CI Pipeline — lint, test, and Snyk (SCA, SAST, container, AIBOM)
+# AWS / ECR deployment steps removed; use SNYK_TOKEN for security jobs.
 # =============================================================================
 name: CI Pipeline
 
@@ -11,7 +12,6 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio
+          pip install pytest pytest-cov pytest-asyncio httpx
 
       - name: Run tests with coverage
         run: |
@@ -95,7 +95,7 @@ jobs:
           fail_ci_if_error: false
 
   # ---------------------------------------------------------------------------
-  # Security Scanning with Snyk
+  # Security Scanning with Snyk (SCA + SAST)
   # ---------------------------------------------------------------------------
   security-scan:
     name: Security Scan
@@ -133,7 +133,30 @@ jobs:
           args: --severity-threshold=high
 
   # ---------------------------------------------------------------------------
-  # AIBOM Generation
+  # Snyk Container (local image build — no AWS / ECR)
+  # ---------------------------------------------------------------------------
+  snyk-container:
+    name: Snyk Container Scan
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image (local tag)
+        run: docker build -t aibom-app:ci .
+
+      - name: Run Snyk Container scan
+        uses: snyk/actions/docker@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: aibom-app:ci
+          args: --severity-threshold=high
+
+  # ---------------------------------------------------------------------------
+  # AIBOM Generation (Snyk CLI)
   # ---------------------------------------------------------------------------
   aibom:
     name: Generate AIBOM
@@ -162,63 +185,3 @@ jobs:
           name: aibom-report
           path: aibom-report.json
           retention-days: 30
-
-  # ---------------------------------------------------------------------------
-  # Build Docker Image
-  # ---------------------------------------------------------------------------
-  build:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    needs: [test, security-scan]
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY || 'aibom-app' }}
-          tags: |
-            type=sha,prefix={{branch}}-
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
-      - name: Run Snyk Container scan
-        uses: snyk/actions/docker@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          image: ${{ steps.meta.outputs.tags }}
-          args: --severity-threshold=high
-
