@@ -10,6 +10,9 @@
 # If origin/base...HEAD is empty (e.g. main vs main), the workflow falls back to
 # the last commit patch so the agent still has real hunks to review.
 #
+# Push to main/develop: diff uses github.event.before..after so a merge to your
+# fork's main produces a tangible patch without opening a PR.
+#
 # See .github/CURSOR_VS_SNYK.md for how this differs from Snyk.
 #
 # Setup: Settings → Secrets and variables → Actions → add CURSOR_API_KEY
@@ -17,6 +20,8 @@
 name: Cursor Security Review
 
 on:
+  push:
+    branches: [main, develop]
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main, develop]
@@ -39,7 +44,7 @@ jobs:
   cursor-security-review:
     name: Cursor agent (security review)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
 
     steps:
       - name: Checkout
@@ -61,28 +66,56 @@ jobs:
           echo "- **HEAD branch:** ${HEAD_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Base ref:** ${BASE_REF}" >> "$GITHUB_STEP_SUMMARY"
 
-          git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          git fetch origin "${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}" || {
-            echo "::warning::Could not fetch origin/${HEAD_BRANCH}. Push the branch to origin, then re-run."
-          }
-
-          echo "### Commits on HEAD not in origin/${BASE_REF} (first 20)" >> "$GITHUB_STEP_SUMMARY"
-          git log --oneline "origin/${BASE_REF}..HEAD" | head -20 >> "$GITHUB_STEP_SUMMARY" || true
-
-          MODE="pr_three_dot"
-          git diff "origin/${BASE_REF}...HEAD" > pr-diff.patch || true
-          git diff "origin/${BASE_REF}...HEAD" --stat > pr-diff-stat.txt || true
-
-          if [ ! -s pr-diff.patch ]; then
-            echo "::notice::Three-dot diff empty (HEAD matches merge-base with origin/${BASE_REF}, or same commit). Trying fallbacks so the agent still has hunks."
-            if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-              git diff HEAD~1..HEAD > pr-diff.patch
-              git diff HEAD~1..HEAD --stat > pr-diff-stat.txt
-              MODE="parent_to_head"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.event.after }}"
+            echo "- **push before:** ${BEFORE}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **push after:** ${AFTER}" >> "$GITHUB_STEP_SUMMARY"
+            MODE="push_before_after"
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              git show -p --no-color --pretty=medium "${AFTER}" > pr-diff.patch || true
+              git show --stat --no-patch "${AFTER}" > pr-diff-stat.txt 2>/dev/null || git show --stat "${AFTER}" > pr-diff-stat.txt || true
+              MODE="push_initial_commit"
             else
-              git show -p --no-color --pretty=medium HEAD > pr-diff.patch
-              git show --stat --no-patch HEAD > pr-diff-stat.txt || git show --stat HEAD > pr-diff-stat.txt
-              MODE="single_commit_show"
+              git diff "${BEFORE}" "${AFTER}" > pr-diff.patch || true
+              git diff "${BEFORE}" "${AFTER}" --stat > pr-diff-stat.txt || true
+            fi
+            if [ ! -s pr-diff.patch ]; then
+              echo "::notice::Push-range diff empty; falling back to HEAD~1..HEAD."
+              if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+                git diff HEAD~1..HEAD > pr-diff.patch
+                git diff HEAD~1..HEAD --stat > pr-diff-stat.txt
+                MODE="push_fallback_parent_to_head"
+              else
+                git show -p --no-color --pretty=medium HEAD > pr-diff.patch
+                git show --stat --no-patch HEAD > pr-diff-stat.txt || git show --stat HEAD > pr-diff-stat.txt
+                MODE="push_fallback_single_commit_show"
+              fi
+            fi
+          else
+            git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+            git fetch origin "${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}" || {
+              echo "::warning::Could not fetch origin/${HEAD_BRANCH}. Push the branch to origin, then re-run."
+            }
+
+            echo "### Commits on HEAD not in origin/${BASE_REF} (first 20)" >> "$GITHUB_STEP_SUMMARY"
+            git log --oneline "origin/${BASE_REF}..HEAD" | head -20 >> "$GITHUB_STEP_SUMMARY" || true
+
+            MODE="pr_three_dot"
+            git diff "origin/${BASE_REF}...HEAD" > pr-diff.patch || true
+            git diff "origin/${BASE_REF}...HEAD" --stat > pr-diff-stat.txt || true
+
+            if [ ! -s pr-diff.patch ]; then
+              echo "::notice::Three-dot diff empty (HEAD matches merge-base with origin/${BASE_REF}, or same commit). Trying fallbacks so the agent still has hunks."
+              if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+                git diff HEAD~1..HEAD > pr-diff.patch
+                git diff HEAD~1..HEAD --stat > pr-diff-stat.txt
+                MODE="parent_to_head"
+              else
+                git show -p --no-color --pretty=medium HEAD > pr-diff.patch
+                git show --stat --no-patch HEAD > pr-diff-stat.txt || git show --stat HEAD > pr-diff-stat.txt
+                MODE="single_commit_show"
+              fi
             fi
           fi
 
@@ -132,11 +165,14 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_TITLE: ${{ github.event.pull_request.title || '' }}
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.base_branch }}
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
           ACTOR: ${{ github.event.pull_request.user.login || github.actor }}
           DIFF_MODE: ${{ steps.diff.outputs.diff_mode }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before || '' }}
+          PUSH_AFTER: ${{ github.event.after || '' }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
@@ -145,9 +181,12 @@ jobs:
             exit 0
           fi
 
-          PR_LINE="Pull request #${PR_NUMBER:-manual}: ${PR_TITLE}"
-          if [ -z "${PR_NUMBER}" ]; then
+          if [ "${EVENT_NAME}" = "push" ]; then
+            PR_LINE="Push to ${HEAD_REF} — diff uses this push's before/after SHAs (${PUSH_BEFORE} → ${PUSH_AFTER})"
+          elif [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             PR_LINE="Manual workflow_dispatch — branch ${HEAD_REF} vs origin/${BASE_REF}"
+          else
+            PR_LINE="Pull request #${PR_NUMBER}: ${PR_TITLE}"
           fi
 
           agent --trust -p --output-format text \
@@ -159,7 +198,7 @@ jobs:
             - Base branch: ${BASE_REF}  Head branch/ref: ${HEAD_REF}
             - Author/triggered by: ${ACTOR}
             - **diff_mode:** ${DIFF_MODE}
-              (pr_three_dot = changes vs merge-base of base; parent_to_head / single_commit_show = fallback when three-dot was empty; placeholder = last resort)
+              (push_before_after = diff for this push only; pr_three_dot = PR vs merge-base; parent_to_head / single_commit_show = fallbacks; placeholder = last resort)
 
             In the workspace you have pr-diff.patch (unified diff) and pr-diff-stat.txt. Read them.
             If diff_mode is not pr_three_dot, state in your summary that you reviewed the **fallback patch** (last commit or placeholder), not the full PR delta vs base.
