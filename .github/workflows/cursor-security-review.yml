@@ -11,6 +11,10 @@
 # Setup: Settings → Secrets and variables → Actions → add CURSOR_API_KEY
 #   https://cursor.com/docs/cli/reference/authentication.md#api-key-authentication
 #
+# Manual run (workflow_dispatch): choose Branch = YOUR FEATURE BRANCH (must be
+# pushed to origin), Base input = main. Running on "main" vs base "main" yields
+# an empty diff — there is nothing to compare.
+#
 # Note: Secrets are not passed to workflows from fork PRs (GitHub default).
 # =============================================================================
 name: Cursor Security Review
@@ -22,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       base_branch:
-        description: "Branch to diff against (compare selected branch to this base)"
+        description: "Compare the selected branch to this base (e.g. main). Use a feature branch as the workflow branch."
         required: false
         default: "main"
 
@@ -41,21 +45,47 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
 
     steps:
+      # PR: exact head SHA (fork-safe). Manual: branch ref so Git knows the branch name for fetch/diff.
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
 
       - name: Build diff for the agent
+        id: diff
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.base_branch }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
+          echo "## Diff context" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **HEAD (SHA):** $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **HEAD branch name:** ${HEAD_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Base ref:** ${BASE_REF}" >> "$GITHUB_STEP_SUMMARY"
+
           git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          # Ensure the tip of the feature branch exists on origin (commits must be pushed)
+          git fetch origin "${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}" || {
+            echo "::warning::Could not fetch origin/${HEAD_BRANCH}. Push the branch to origin, then re-run."
+          }
+
+          echo "### Commits on HEAD not in origin/${BASE_REF} (first 20)" >> "$GITHUB_STEP_SUMMARY"
+          git log --oneline "origin/${BASE_REF}..HEAD" | head -20 >> "$GITHUB_STEP_SUMMARY" || true
+
           git diff "origin/${BASE_REF}...HEAD" > pr-diff.patch || true
           git diff "origin/${BASE_REF}...HEAD" --stat > pr-diff-stat.txt || true
-          if [ "$(wc -c < pr-diff.patch)" -gt 400000 ]; then
+
+          BYTES=$(wc -c < pr-diff.patch | tr -d ' ')
+          echo "bytes=${BYTES}" >> "$GITHUB_OUTPUT"
+          echo "- **pr-diff.patch size (bytes):** ${BYTES}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${BYTES}" -eq 0 ] || [ ! -s pr-diff.patch ]; then
+            echo "::notice::Empty diff: origin/${BASE_REF} and HEAD name the same tree, or no commits on this branch are ahead of origin/${BASE_REF}. For a manual run, pick your **feature branch** in 'Use workflow from' (not main) and ensure it is **pushed** to GitHub."
+          fi
+
+          if [ "${BYTES}" -gt 400000 ]; then
             echo "::notice::Truncating pr-diff.patch to 5000 lines for agent context."
             head -n 5000 pr-diff.patch > pr-diff-truncated.patch
             mv pr-diff-truncated.patch pr-diff.patch
@@ -67,7 +97,6 @@ jobs:
         run: |
           set -euo pipefail
           curl https://cursor.com/install -fsS | bash
-          # Install script may place `agent` under ~/.local/bin (docs) or ~/.cursor/bin
           for d in "$HOME/.local/bin" "$HOME/.cursor/bin"; do
             if [ -d "$d" ]; then
               echo "$d" >> "$GITHUB_PATH"
@@ -85,6 +114,7 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.base_branch }}
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
           ACTOR: ${{ github.event.pull_request.user.login || github.actor }}
+          DIFF_BYTES: ${{ steps.diff.outputs.bytes }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
@@ -93,12 +123,17 @@ jobs:
             exit 0
           fi
 
+          if [ -z "${DIFF_BYTES:-0}" ] || [ "${DIFF_BYTES}" -eq 0 ] || [ ! -s pr-diff.patch ]; then
+            echo "Skipping Cursor agent: empty diff (nothing ahead of origin/${BASE_REF} for this checkout)."
+            echo "Open a PR from your feature branch, or re-run workflow_dispatch with **Branch** = pushed feature branch and **base_branch** = ${BASE_REF}."
+            exit 0
+          fi
+
           PR_LINE="Pull request #${PR_NUMBER:-manual}: ${PR_TITLE}"
           if [ -z "${PR_NUMBER}" ]; then
             PR_LINE="Manual workflow_dispatch — branch ${HEAD_REF} vs origin/${BASE_REF}"
           fi
 
-          # --trust: non-interactive CI (otherwise agent prompts for workspace trust and exits 1)
           agent --trust -p --output-format text \
             "You are performing an automated security-focused code review for a GitHub change.
 
